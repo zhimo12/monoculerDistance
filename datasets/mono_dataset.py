@@ -54,7 +54,7 @@ class MonoDataset(data.Dataset):
         self.height = height
         self.width = width
         self.num_scales = num_scales
-        self.interp = Image.ANTIALIAS
+        self.interp = Image.LANCZOS
 
         self.frame_idxs = frame_idxs
 
@@ -106,7 +106,11 @@ class MonoDataset(data.Dataset):
             if "color" in k:
                 n, im, i = k
                 inputs[(n, im, i)] = self.to_tensor(f)
-                inputs[(n + "_aug", im, i)] = self.to_tensor(color_aug(f))
+                if callable(color_aug):
+                    inputs[(n + "_aug", im, i)] = self.to_tensor(color_aug(f))
+                else:
+                    inputs[(n + "_aug", im, i)] = self.to_tensor(f)
+
 
     def __len__(self):
         return len(self.filenames)
@@ -172,11 +176,30 @@ class MonoDataset(data.Dataset):
             inputs[("K", scale)] = torch.from_numpy(K)
             inputs[("inv_K", scale)] = torch.from_numpy(inv_K)
 
-        if do_color_aug:
-            color_aug = transforms.ColorJitter.get_params(
-                self.brightness, self.contrast, self.saturation, self.hue)
-        else:
-            color_aug = (lambda x: x)
+        # --- NEW ROBUST CODE ---
+        # --- ROBUST FIX FOR TORCHVISION CONFLICT ---
+            if do_color_aug:
+                # Get the list of transforms/params
+                aug_list = transforms.ColorJitter.get_params(
+                    self.brightness, self.contrast, self.saturation, self.hue)
+                
+                # Define a custom function to apply them safely
+                def apply_aug(img):
+                    # If it's a collection (tuple/list), iterate carefully
+                    if isinstance(aug_list, (tuple, list)):
+                        for t in aug_list:
+                            # Only call it if it's actually a function/transform
+                            if callable(t): 
+                                img = t(img)
+                    # If it's a single callable, just call it
+                    elif callable(aug_list):
+                        img = aug_list(img)
+                    return img
+                
+                color_aug = apply_aug
+            else:
+                color_aug = (lambda x: x)
+            # -------------------------------------------
 
         self.preprocess(inputs, color_aug)
 

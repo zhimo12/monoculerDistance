@@ -267,3 +267,30 @@ def compute_depth_errors(gt, pred):
     sq_rel = torch.mean((gt - pred) ** 2 / gt)
 
     return abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3
+
+def robust_loss_function(p, alpha, c):
+    """
+    Computes the Robust Loss (L_robu) from Equation (15) of the Liang et al. 2022 paper.
+    
+    Args:
+        p: The pixel-wise difference (prediction - target)
+        alpha: The shape parameter (controls robustness to outliers)
+        c: The scale parameter (often called 'beta' in the paper's eq 15)
+    """
+    # 1. Prepare terms to avoid division by zero
+    epsilon = 1e-6 
+    alpha = torch.tensor(alpha).type_as(p)
+    c = torch.tensor(c).type_as(p)
+    
+    # 2. Compute the inner part of Eq (15): ( (p/c)^2 / |alpha-2| + 1 )
+    # Note: The paper uses 'beta' for scale, we use 'c' here to match standard implementations
+    squared_scaled_res = (p / c) ** 2
+    abs_alpha_minus_2 = torch.abs(alpha - 2.0)
+    
+    base = (squared_scaled_res / (abs_alpha_minus_2 + epsilon)) + 1.0
+    
+    # 3. Compute the full loss
+    # L = (|alpha-2| / alpha) * (base^(alpha/2) - 1)
+    loss = (abs_alpha_minus_2 / (alpha + epsilon)) * (torch.pow(base, alpha / 2.0) - 1.0)
+    
+    return loss

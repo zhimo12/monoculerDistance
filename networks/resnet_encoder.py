@@ -12,7 +12,12 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 import torch.utils.model_zoo as model_zoo
-
+# --- ADD THIS DICTIONARY TO FIX THE ERROR ---
+internal_model_urls = {
+    "resnet18": "https://download.pytorch.org/models/resnet18-5c106cde.pth",
+    "resnet50": "https://download.pytorch.org/models/resnet50-19c8e357.pth",
+}
+# --------------------------------------------
 
 class ResNetMultiImageInput(models.ResNet):
     """Constructs a resnet model with varying number of input images.
@@ -52,7 +57,7 @@ def resnet_multiimage_input(num_layers, pretrained=False, num_input_images=1):
     model = ResNetMultiImageInput(block_type, blocks, num_input_images=num_input_images)
 
     if pretrained:
-        loaded = model_zoo.load_url(models.resnet.model_urls['resnet{}'.format(num_layers)])
+        loaded = model_zoo.load_url(internal_model_urls['resnet{}'.format(num_layers)])
         loaded['conv1.weight'] = torch.cat(
             [loaded['conv1.weight']] * num_input_images, 1) / num_input_images
         model.load_state_dict(loaded)

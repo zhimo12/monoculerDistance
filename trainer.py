@@ -322,10 +322,10 @@ class Trainer:
         """
         self.set_eval()
         try:
-            inputs = self.val_iter.next()
+            inputs = next(self.val_iter)
         except StopIteration:
             self.val_iter = iter(self.val_loader)
-            inputs = self.val_iter.next()
+            inputs = next(self.val_iter)
 
         with torch.no_grad():
             outputs, losses = self.process_batch(inputs)
@@ -390,19 +390,32 @@ class Trainer:
                     outputs[("color_identity", frame_id, scale)] = \
                         inputs[("color", frame_id, source_scale)]
 
-    def compute_reprojection_loss(self, pred, target):
-        """Computes reprojection loss between a batch of predicted and target images
+    # --- UPDATE IN layers.py ---
+
+    def compute_reprojection_loss(self, pred, target, alpha=1.0, c=1.0):
         """
-        abs_diff = torch.abs(target - pred)
-        l1_loss = abs_diff.mean(1, True)
+        Computes the reprojection loss using SSIM + Robust Loss.
+        Ref: Equation (12) and (15) in Liang et al. 2022.
+        """
+        
+        # 1. Robust Loss Term (Replaces L1) ------------------------------------
+        # The paper replaces L1 pixel-wise loss with L_robu 
+        pixel_diff = pred - target
+        robust_loss = robust_loss_function(pixel_diff, alpha=alpha, c=c)
+        robust_term = robust_loss.mean(1, keepdim=True)
+        # ----------------------------------------------------------------------
 
-        if self.opt.no_ssim:
-            reprojection_loss = l1_loss
-        else:
-            ssim_loss = self.ssim(pred, target).mean(1, True)
-            reprojection_loss = 0.85 * ssim_loss + 0.15 * l1_loss
-
-        return reprojection_loss
+        # 2. SSIM Term (Standard Monodepth2) -----------------------------------
+        # Ref: Equation (12) first part 
+        ssim_loss = self.ssim(pred, target)
+        ssim_term = ((1.0 - ssim_loss) / 2.0).mean(1, keepdim=True)
+        
+        # 3. Combine (Hybrid Loss) ---------------------------------------------
+        # The paper uses lambda=0.85 for SSIM [cite: 307]
+        # L_re = 0.85 * SSIM + 0.15 * L_robu
+        total_loss = 0.85 * ssim_term + 0.15 * robust_term
+        
+        return total_loss
 
     def compute_losses(self, inputs, outputs):
         """Compute the reprojection and smoothness losses for a minibatch
@@ -425,7 +438,7 @@ class Trainer:
 
             for frame_id in self.opt.frame_ids[1:]:
                 pred = outputs[("color", frame_id, scale)]
-                reprojection_losses.append(self.compute_reprojection_loss(pred, target))
+                reprojection_losses.append(self.compute_reprojection_loss(pred, target, alpha=1.0, c=1.0))
 
             reprojection_losses = torch.cat(reprojection_losses, 1)
 
@@ -434,7 +447,7 @@ class Trainer:
                 for frame_id in self.opt.frame_ids[1:]:
                     pred = inputs[("color", frame_id, source_scale)]
                     identity_reprojection_losses.append(
-                        self.compute_reprojection_loss(pred, target))
+                        self.compute_reprojection_loss(pred, target, alpha=1.0, c=1.0))
 
                 identity_reprojection_losses = torch.cat(identity_reprojection_losses, 1)
 

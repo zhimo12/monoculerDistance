@@ -6,6 +6,7 @@
 
 from __future__ import absolute_import, division, print_function
 
+from html import parser
 import os
 
 import argparse
@@ -24,11 +25,9 @@ def export_gt_depths_kitti():
                         type=str,
                         help='path to the root of the KITTI data',
                         required=True)
-    parser.add_argument('--split',
-                        type=str,
-                        help='which split to export gt from',
-                        required=True,
-                        choices=["eigen", "eigen_benchmark"])
+
+    # Removed the 'choices' part to allow 'custom'
+    parser.add_argument("--split", type=str, help="which split to use", required=True)
     opt = parser.parse_args()
 
     split_folder = os.path.join(os.path.dirname(__file__), "splits", opt.split)
@@ -42,7 +41,7 @@ def export_gt_depths_kitti():
         folder, frame_id, _ = line.split()
         frame_id = int(frame_id)
 
-        if opt.split == "eigen":
+        if opt.split == "eigen" or opt.split == "custom":
             calib_dir = os.path.join(opt.data_path, folder.split("/")[0])
             velo_filename = os.path.join(opt.data_path, folder,
                                          "velodyne_points/data", "{:010d}.bin".format(frame_id))

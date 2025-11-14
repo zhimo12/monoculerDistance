@@ -5,3 +5,7 @@ __pycache__
 *.npz
 kitti_data
 models
+.venv/
+runs/
+*.pyo
+.DS_Store
